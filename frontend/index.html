@@ -7,21 +7,48 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-router-dom/5.3.0/react-router-dom.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.18.9/babel.min.js"></script>
 </head>
 <body>
   <div id="root"></div>
   <script type="text/babel">
     const { useState, useEffect } = React;
+    const { BrowserRouter, Route, Link, Switch } = ReactRouterDOM;
 
     function App() {
       const [books, setBooks] = useState([]);
-      const [newBook, setNewBook] = useState({ title: '', author: '', isbn: '', available: true });
+      const [users, setUsers] = useState([]);
+      const [reservations, setReservations] = useState([]);
+      const [suggestions, setSuggestions] = useState([]);
+      const [newBook, setNewBook] = useState({ title: '', author: '', isbn: '', available: true, quantity: 1 });
+      const [newReservation, setNewReservation] = useState({ userId: '', bookId: '' });
+      const [newSuggestion, setNewSuggestion] = useState({ title: '', author: '' });
+      const [newLoan, setNewLoan] = useState({ userId: '', bookId: '', loanDate: '', returnDate: '' });
+      const [editSuggestion, setEditSuggestion] = useState(null);
 
       useEffect(() => {
         fetch('http://localhost:3000/api/books')
           .then(res => res.json())
           .then(data => setBooks(data));
+        fetch('http://localhost:3000/api/users')
+          .then(res => res.json())
+          .then(data => setUsers(data));
+        fetch('http://localhost:3000/api/reservations')
+          .then(res => res.json())
+          .then(data => setReservations(data));
+        fetch('http://localhost:3000/api/suggestions')
+          .then(res => res.json())
+          .then(data => setSuggestions(data));
+        fetch('http://localhost:3000/api/loans')
+          .then(res => res.json())
+          .then(data => {
+            const updatedBooks = books.map(book => {
+              const loan = data.find(l => l.bookId === book._id && !l.returnDate);
+              return { ...book, available: !loan && book.quantity > 0 };
+            });
+            setBooks(updatedBooks);
+          });
       }, []);
 
       const handleAddBook = () => {
@@ -33,44 +60,324 @@
           .then(book => setBooks([...books, book]));
       };
 
-      return (
-        <div className="container mx-auto p-4">
-          <h1 className="text-2xl font-bold mb-4">Library Management</h1>
-          <div className="mb-4">
-            <input
-              className="border p-2 mr-2"
-              placeholder="Title"
-              value={newBook.title}
-              onChange={e => setNewBook({ ...newBook, title: e.target.value })}
-            />
-            <input
-              className="border p-2 mr-2"
-              placeholder="Author"
-              value={newBook.author}
-              onChange={e => setNewBook({ ...newBook, author: e.target.value })}
-            />
-            <input
-              className="border p-2 mr-2"
-              placeholder="ISBN"
-              value={newBook.isbn}
-              onChange={e => setNewBook({ ...newBook, isbn: e.target.value })}
-            />
-            <button
-              className="bg-blue-500 text-white p-2 rounded"
-              onClick={handleAddBook}
-            >
-              Add Book
-            </button>
-          </div>
-          <h2 className="text-xl font-semibold mb-2">Books</h2>
+      const handleAddReservation = () => {
+        fetch('http://localhost:3000/api/reservations', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(newReservation)
+        }).then(res => res.json())
+          .then(reservation => setReservations([...reservations, reservation]));
+      };
+
+      const handleAddSuggestion = () => {
+        fetch('http://localhost:3000/api/suggestions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(newSuggestion)
+        }).then(res => res.json())
+          .then(suggestion => {
+            setSuggestions([...suggestions, suggestion]);
+            setNewSuggestion({ title: '', author: '' });
+          });
+      };
+
+      const handleEditSuggestion = (suggestion) => {
+        setEditSuggestion(suggestion);
+      };
+
+      const handleUpdateSuggestion = () => {
+        fetch(`http://localhost:3000/api/suggestions/${editSuggestion._id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(editSuggestion)
+        }).then(res => res.json())
+          .then(updatedSuggestion => {
+            setSuggestions(suggestions.map(s => s._id === updatedSuggestion._id ? updatedSuggestion : s));
+            setEditSuggestion(null);
+          });
+      };
+
+      const handleAddLoan = () => {
+        const loanData = {
+          ...newLoan,
+          loanDate: newLoan.loanDate || new Date().toISOString().split('T')[0],
+          returnDate: newLoan.returnDate || ''
+        };
+        fetch('http://localhost:3000/api/loans', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(loanData)
+        }).then(res => res.json())
+          .then(loan => {
+            setBooks(books.map(book => {
+              if (book._id === loan.bookId && book.quantity > 0) {
+                return { ...book, quantity: book.quantity - 1, available: book.quantity > 1 };
+              }
+              return book;
+            }));
+            setNewLoan({ userId: '', bookId: '', loanDate: '', returnDate: '' });
+          });
+      };
+
+      const BookManagement = () => (
+        <div className="mb-4">
+          <h2 className="text-xl font-semibold mb-2">Add New Book</h2>
+          <input
+            className="border p-2 mr-2"
+            placeholder="Title"
+            value={newBook.title}
+            onChange={e => setNewBook({ ...newBook, title: e.target.value })}
+          />
+          <input
+            className="border p-2 mr-2"
+            placeholder="Author"
+            value={newBook.author}
+            onChange={e => setNewBook({ ...newBook, author: e.target.value })}
+          />
+          <input
+            className="border p-2 mr-2"
+            placeholder="ISBN"
+            value={newBook.isbn}
+            onChange={e => setNewBook({ ...newBook, isbn: e.target.value })}
+          />
+          <input
+            className="border p-2 mr-2"
+            type="number"
+            placeholder="Quantity"
+            value={newBook.quantity}
+            min="1"
+            onChange={e => setNewBook({ ...newBook, quantity: parseInt(e.target.value) || 1 })}
+          />
+          <button
+            className="bg-blue-500 text-white p-2 rounded"
+            onClick={handleAddBook}
+          >
+            Add Book
+          </button>
+          <h2 className="text-xl font-semibold mb-2 mt-4">Books</h2>
           <ul>
             {books.map(book => (
               <li key={book._id} className="border-b py-2">
-                {book.title} by {book.author} (ISBN: {book.isbn}) - {book.available ? 'Available' : 'Not Available'}
+                {book.title} by {book.author} (ISBN: {book.isbn}) - Quantity: {book.quantity}, {book.available ? 'Available' : 'Not Available'}
               </li>
             ))}
           </ul>
         </div>
+      );
+
+      const ReservationManagement = () => (
+        <div className="mb-4">
+          <h2 className="text-xl font-semibold mb-2">Add Reservation</h2>
+          <select
+            className="border p-2 mr-2"
+            value={newReservation.userId}
+            onChange={e => setNewReservation({ ...newReservation, userId: e.target.value })}
+          >
+            <option value="">Select User</option>
+            {users.map(user => (
+              <option key={user._id} value={user._id}>{user.name}</option>
+            ))}
+          </select>
+          <select
+            className="border p-2 mr-2"
+            value={newReservation.bookId}
+            onChange={e => setNewReservation({ ...newReservation, bookId: e.target.value })}
+          >
+            <option value="">Select Book</option>
+            {books.map(book => (
+              <option key={book._id} value={book._id}>{book.title}</option>
+            ))}
+          </select>
+          <button
+            className="bg-green-500 text-white p-2 rounded"
+            onClick={handleAddReservation}
+          >
+            Add Reservation
+          </button>
+          <h2 className="text-xl font-semibold mb-2 mt-4">Reservations</h2>
+          <ul>
+            {reservations.map(reservation => (
+              <li key={reservation._id} className="border-b py-2">
+                User: {users.find(u => u._id === reservation.userId)?.name}, Book: {books.find(b => b._id === reservation.bookId)?.title}
+              </li>
+            ))}
+          </ul>
+        </div>
+      );
+
+      const SuggestionManagement = () => (
+        <div className="mb-4">
+          <h2 className="text-xl font-semibold mb-2">Suggest New Book (Admin)</h2>
+          <input
+            className="border p-2 mr-2"
+            placeholder="Title"
+            value={newSuggestion.title}
+            onChange={e => setNewSuggestion({ ...newSuggestion, title: e.target.value })}
+          />
+          <input
+            className="border p-2 mr-2"
+            placeholder="Author"
+            value={newSuggestion.author}
+            onChange={e => setNewSuggestion({ ...newSuggestion, author: e.target.value })}
+          />
+          <button
+            className="bg-yellow-500 text-white p-2 rounded"
+            onClick={handleAddSuggestion}
+          >
+            Submit Suggestion
+          </button>
+          <h2 className="text-xl font-semibold mb-2 mt-4">Edit Suggestions</h2>
+          {editSuggestion ? (
+            <div className="mb-4">
+              <input
+                className="border p-2 mr-2"
+                placeholder="Title"
+                value={editSuggestion.title}
+                onChange={e => setEditSuggestion({ ...editSuggestion, title: e.target.value })}
+              />
+              <input
+                className="border p-2 mr-2"
+                placeholder="Author"
+                value={editSuggestion.author}
+                onChange={e => setEditSuggestion({ ...editSuggestion, author: e.target.value })}
+              />
+              <select
+                className="border p-2 mr-2"
+                value={editSuggestion.status}
+                onChange={e => setEditSuggestion({ ...editSuggestion, status: e.target.value })}
+              >
+                <option value="pending">Pending</option>
+                <option value="approved">Approved</option>
+                <option value="rejected">Rejected</option>
+              </select>
+              <button
+                className="bg-blue-500 text-white p-2 rounded mr-2"
+                onClick={handleUpdateSuggestion}
+              >
+                Update
+              </button>
+              <button
+                className="bg-red-500 text-white p-2 rounded"
+                onClick={() => setEditSuggestion(null)}
+              >
+                Cancel
+              </button>
+            </div>
+          ) : (
+            <ul>
+              {suggestions.map(suggestion => (
+                <li key={suggestion._id} className="border-b py-2 flex justify-between items-center">
+                  <span>
+                    {suggestion.title} by {suggestion.author} (Status: {suggestion.status})
+                  </span>
+                  <button
+                    className="bg-blue-500 text-white p-1 rounded"
+                    onClick={() => handleEditSuggestion(suggestion)}
+                  >
+                    Edit
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      );
+
+      const LoanManagement = () => (
+        <div className="mb-4">
+          <h2 className="text-xl font-semibold mb-2">Register Loan</h2>
+          <select
+            className="border p-2 mr-2"
+            value={newLoan.userId}
+            onChange={e => setNewLoan({ ...newLoan, userId: e.target.value })}
+          >
+            <option value="">Select User</option>
+            {users.map(user => (
+              <option key={user._id} value={user._id}>{user.name}</option>
+            ))}
+          </select>
+          <select
+            className="border p-2 mr-2"
+            value={newLoan.bookId}
+            onChange={e => setNewLoan({ ...newLoan, bookId: e.target.value })}
+          >
+            <option value="">Select Book</option>
+            {books.map(book => (
+              <option key={book._id} value={book._id}>{book.title}</option>
+            ))}
+          </select>
+          <input
+            className="border p-2 mr-2"
+            type="date"
+            value={newLoan.loanDate}
+            onChange={e => setNewLoan({ ...newLoan, loanDate: e.target.value })}
+          />
+          <input
+            className="border p-2 mr-2"
+            type="date"
+            value={newLoan.returnDate}
+            onChange={e => setNewLoan({ ...newLoan, returnDate: e.target.value })}
+          />
+          <button
+            className="bg-purple-500 text-white p-2 rounded"
+            onClick={handleAddLoan}
+          >
+            Register Loan
+          </button>
+          <h2 className="text-xl font-semibold mb-2 mt-4">Loans</h2>
+          <ul>
+            {books.flatMap(book =>
+              users.filter(user =>
+                book.quantity > 0 && book.available
+              ).map(user => (
+                <li key={`${book._id}-${user._id}`} className="border-b py-2">
+                  {user.name} borrowed {book.title} on {newLoan.loanDate || 'N/A'} until {newLoan.returnDate || 'N/A'}
+                </li>
+              ))
+            )}
+          </ul>
+        </div>
+      );
+
+      return (
+        <BrowserRouter>
+          <div className="container mx-auto p-4">
+            <h1 className="text-2xl font-bold mb-4">Library Management (Admin Panel)</h1>
+            <nav className="mb-4">
+              <ul className="flex space-x-4">
+                <li>
+                  <Link to="/books" className="text-blue-500 hover:underline">Books</Link>
+                </li>
+                <li>
+                  <Link to="/reservations" className="text-blue-500 hover:underline">Reservations</Link>
+                </li>
+                <li>
+                  <Link to="/suggestions" className="text-blue-500 hover:underline">Suggestions</Link>
+                </li>
+                <li>
+                  <Link to="/loans" className="text-blue-500 hover:underline">Loans</Link>
+                </li>
+              </ul>
+            </nav>
+            <Switch>
+              <Route path="/books">
+                <BookManagement />
+              </Route>
+              <Route path="/reservations">
+                <ReservationManagement />
+              </Route>
+              <Route path="/suggestions">
+                <SuggestionManagement />
+              </Route>
+              <Route path="/loans">
+                <LoanManagement />
+              </Route>
+              <Route path="/">
+                <div>Welcome to the Library Management System! Use the navigation to manage books, reservations, suggestions, and loans.</div>
+              </Route>
+            </Switch>
+          </div>
+        </BrowserRouter>
       );
     }
 

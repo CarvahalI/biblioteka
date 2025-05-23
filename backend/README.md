@@ -1,2 +1,0 @@
-# nowatorski
-System zarządzania biblioteką
